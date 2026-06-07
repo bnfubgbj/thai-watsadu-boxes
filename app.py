@@ -312,7 +312,10 @@ if "file_results" not in st.session_state:
 # ─── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ⚙️ ตั้งค่า")
+    # ดึง key จาก Streamlit Secrets ก่อน ถ้าไม่มีค่อยให้ user กรอก
+    default_key = st.secrets.get("GEMINI_API_KEY", "")
     api_key = st.text_input("Google Gemini API Key", type="password",
+                            value=default_key,
                             placeholder="AIza...",
                             help="ดูได้จาก aistudio.google.com/app/apikey")
     st.markdown("---")
