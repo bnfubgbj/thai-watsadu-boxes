@@ -313,14 +313,22 @@ if "file_results" not in st.session_state:
 # ─── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ⚙️ ตั้งค่า")
-    # ดึง key จาก Streamlit Secrets ก่อน ถ้าไม่มีค่อยให้ user กรอก
-    default_key = st.secrets.get("GEMINI_API_KEY", "")
-    api_key = st.text_input("Google Gemini API Key", type="password",
-                            value=default_key,
-                            placeholder="AIza...",
-                            help="ดูได้จาก aistudio.google.com/app/apikey")
-    if default_key:
-        st.success("✅ API Key โหลดจาก Secrets แล้ว")
+    # ดึง key จาก Streamlit Secrets ก่อน
+    secret_key = st.secrets.get("GEMINI_API_KEY", "")
+    if secret_key:
+        st.success("✅ API Key พร้อมใช้งาน")
+        api_key = secret_key
+        # ซ่อน input ถ้ามี key จาก secrets แล้ว
+        with st.expander("🔑 เปลี่ยน API Key"):
+            manual_key = st.text_input("Google Gemini API Key", type="password",
+                                placeholder="AIza...",
+                                help="ดูได้จาก aistudio.google.com/app/apikey")
+            if manual_key:
+                api_key = manual_key
+    else:
+        api_key = st.text_input("Google Gemini API Key", type="password",
+                                placeholder="AIza...",
+                                help="ดูได้จาก aistudio.google.com/app/apikey")
     st.markdown("---")
     st.markdown("### 📋 เงื่อนไขการบรรจุกล่อง")
     st.markdown("""
@@ -367,12 +375,6 @@ with col_btn2:
 if not api_key:
     st.info("💡 กรอก **Google Gemini API Key** ในแถบซ้ายก่อนเริ่มใช้งาน")
 
-# Auto-load key from secrets if available
-if not api_key:
-    try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-    except Exception:
-        pass
 
 # ─── Analyse ───────────────────────────────────────────────────────────────────
 if analyze_btn and uploaded and api_key:
