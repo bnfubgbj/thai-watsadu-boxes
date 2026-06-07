@@ -55,9 +55,9 @@ def load_branch_master():
 BRANCH_MASTER = load_branch_master()
 
 # ─── Box calculation ───────────────────────────────────────────────────────────
-def calc_boxes(canvas_pairs: int, foam_dozen: float) -> list[dict]:
-    boxes, cp, fd = [], canvas_pairs, foam_dozen
-    mixed = min(int(fd), cp // 6)
+def calc_boxes(canvas_pairs, foam_dozen) -> list[dict]:
+    boxes, cp, fd = [], int(canvas_pairs), float(foam_dozen)
+    mixed = min(int(fd), int(cp) // 6)
     for _ in range(mixed):
         boxes.append({"type": "mixed", "label": "ฟองน้ำ 1 โหล + ผ้าใบ 6 คู่"})
         fd -= 1; cp -= 6
@@ -337,7 +337,7 @@ if analyze_btn and uploaded:
 
     for b in merged_map.values():
         foam_total = (b["foam200"] + b["foam212"]) / 12
-        b["boxes"] = calc_boxes(b["canvas"], foam_total)
+        b["boxes"] = calc_boxes(int(b["canvas"]), foam_total)
 
     st.session_state.all_branches = list(merged_map.values())
     prog.empty()
