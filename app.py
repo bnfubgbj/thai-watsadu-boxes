@@ -11,6 +11,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 import os
 import fitz  # PyMuPDF
+import time
 
 def pdf_to_images_b64(pdf_bytes: bytes) -> list[str]:
     """แปลง PDF แต่ละหน้าเป็น base64 PNG"""
@@ -377,6 +378,12 @@ if analyze_btn and uploaded and api_key:
     for i, f in enumerate(uploaded):
         progress.progress((i) / len(uploaded), text=f"กำลังอ่าน: {f.name}")
         status_area.info(f"⏳ วิเคราะห์ไฟล์ {i+1}/{len(uploaded)}: **{f.name}**")
+
+        # รอ 30 วิ ระหว่างไฟล์ เพื่อไม่ให้เกิน Gemini free tier limit
+        if i > 0:
+            for countdown in range(30, 0, -5):
+                status_area.info(f"⏳ รอ {countdown} วินาที ก่อนวิเคราะห์ไฟล์ถัดไป (Gemini rate limit)...")
+                time.sleep(5)
 
         try:
             mime = f.type if f.type else "image/jpeg"
