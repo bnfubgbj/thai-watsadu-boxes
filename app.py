@@ -1,5 +1,5 @@
 import streamlit as st
-import anthropic
+from openai import OpenAI
 import base64
 import json
 import math
@@ -10,6 +10,20 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 import os
+import fitz  # PyMuPDF
+
+def pdf_to_images_b64(pdf_bytes: bytes) -> list[str]:
+    """แปลง PDF แต่ละหน้าเป็น base64 PNG"""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    images = []
+    for page in doc:
+        mat = fitz.Matrix(2, 2)  # 2x zoom = 144 DPI
+        pix = page.get_pixmap(matrix=mat)
+        img_bytes = pix.tobytes("png")
+        images.append(base64.standard_b64encode(img_bytes).decode())
+    doc.close()
+    return images
+
 
 # ─── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -127,12 +141,11 @@ def calc_boxes(canvas_pairs: int, foam_dozen: float) -> list[dict]:
 
 # ─── AI: analyse one file ──────────────────────────────────────────────────────
 def analyse_file(file_bytes: bytes, mime: str, api_key: str) -> list[dict]:
-    client = anthropic.Anthropic(api_key=api_key)
-    b64 = base64.standard_b64encode(file_bytes).decode()
+    client = OpenAI(api_key=api_key)
 
     prompt = """คุณคือผู้เชี่ยวชาญอ่านใบแบ่งสินค้ารองเท้าของไทวัสดุ (CRC Thai Watsadu)
 
-จากไฟล์นี้ ให้ดึงข้อมูลทุกสาขาออกมา แยกประเภทสินค้าเป็น:
+จากรูปภาพนี้ ให้ดึงข้อมูลทุกสาขาออกมา แยกประเภทสินค้าเป็น:
 1. รองเท้าผ้าใบ (Canvas) — หน่วย: คู่ (pair)
 2. รองเท้าฟองน้ำ 200 — หน่วย: โหล (dozen)
 3. รองเท้าฟองน้ำ 212 — หน่วย: โหล (dozen)
@@ -142,19 +155,48 @@ def analyse_file(file_bytes: bytes, mime: str, api_key: str) -> list[dict]:
 
 หมายเหตุ: EACH = คู่, DOZEN = โหล (12 คู่)"""
 
-    resp = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=2000,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}},
-                {"type": "text", "text": prompt},
-            ],
-        }],
-    )
-    raw = resp.content[0].text.strip()
-    parsed = json.loads(raw.replace("```json", "").replace("```", "").strip())
+    # PDF → แปลงเป็นรูปทีละหน้าแล้วรวม branches
+    if mime == "application/pdf":
+        pages_b64 = pdf_to_images_b64(file_bytes)
+        all_parsed_branches = []
+        invoice_no_found = ""
+        for page_b64 in pages_b64:
+            resp = client.chat.completions.create(
+                model="gpt-4o",
+                max_tokens=2000,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{page_b64}"}},
+                        {"type": "text", "text": prompt},
+                    ],
+                }],
+            )
+            raw = resp.choices[0].message.content.strip()
+            try:
+                page_parsed = json.loads(raw.replace("```json", "").replace("```", "").strip())
+                all_parsed_branches.extend(page_parsed.get("branches", []))
+                if not invoice_no_found:
+                    invoice_no_found = page_parsed.get("invoiceNo", "")
+            except Exception:
+                pass
+        parsed = {"branches": all_parsed_branches, "invoiceNo": invoice_no_found}
+    else:
+        # รูปภาพปกติ
+        b64 = base64.standard_b64encode(file_bytes).decode()
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            max_tokens=2000,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+        )
+        raw = resp.choices[0].message.content.strip()
+        parsed = json.loads(raw.replace("```json", "").replace("```", "").strip())
 
     result = []
     for b in parsed.get("branches", []):
@@ -286,9 +328,9 @@ if "file_results" not in st.session_state:
 # ─── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ⚙️ ตั้งค่า")
-    api_key = st.text_input("Anthropic API Key", type="password",
-                            placeholder="sk-ant-...",
-                            help="ดูได้จาก console.anthropic.com")
+    api_key = st.text_input("OpenAI API Key", type="password",
+                            placeholder="sk-...",
+                            help="ดูได้จาก platform.openai.com/api-keys")
     st.markdown("---")
     st.markdown("### 📋 เงื่อนไขการบรรจุกล่อง")
     st.markdown("""
@@ -333,7 +375,7 @@ with col_btn2:
         st.rerun()
 
 if not api_key:
-    st.info("💡 กรอก **Anthropic API Key** ในแถบซ้ายก่อนเริ่มใช้งาน")
+    st.info("💡 กรอก **OpenAI API Key** ในแถบซ้ายก่อนเริ่มใช้งาน")
 
 # ─── Analyse ───────────────────────────────────────────────────────────────────
 if analyze_btn and uploaded and api_key:
