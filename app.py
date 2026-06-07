@@ -80,20 +80,10 @@ def calc_boxes(canvas_pairs, foam_dozen) -> list[dict]:
 
 # ─── PDF Parser ────────────────────────────────────────────────────────────────
 def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
-    """
-    อ่าน PDF ใบแบ่งสินค้าไทวัสดุ (text-based)
-    คืนค่า: {
-        'po_no': str,
-        'po_items': {'canvas': int, 'foam200': int, 'foam212': int},   # จากใบสั่งซื้อ
-        'branches': {code: {'name':str,'canvas':int,'foam200':int,'foam212':int}},
-        'errors': [str]
-    }
-    """
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     result = {"po_no": "", "invoice_no": "", "ship_date": "", "po_items": {"canvas": 0, "foam200": 0, "foam212": 0},
               "branches": {}, "errors": [], "filename": filename}
 
-    # หาเลข SO, Invoice, Ship Date จากหน้าแรก
     first_text = doc[0].get_text()
     m_so   = re.search(r'SO\d+-\d+', first_text)
     m_inv  = re.search(r'ใบสสงซซอเลขททส\s+(\d+)', first_text)
@@ -102,8 +92,6 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
     if m_inv:  result["invoice_no"] = m_inv.group(1)
     if m_ship: result["ship_date"]  = m_ship.group(1)
 
-    # ─ ใบสั่งซื้อ: หน้าที่มี "ใบสสงซซอ" หรือ "ใบสั่งซื้อ" ─
-    # นับ qty EACH จาก column จำนวน(หน่วยขาย)
     po_pages = []
     dist_pages = []
 
@@ -114,24 +102,19 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
         elif "ใบสสงซซอ" in text or "จสานวนสสง" in text:
             po_pages.append(i)
 
-    # Parse ใบสั่งซื้อ
     for pi in po_pages:
         text = doc[pi].get_text()
         lines = text.split('\n')
         for j, line in enumerate(lines):
-            # หาบรรทัดที่มีชื่อสินค้า
             if 'รองเทคาผคาใบ' in line or 'NANYANG 205' in line:
-                # หา qty EACH ใน context
                 ctx = '\n'.join(lines[j:j+15])
                 for m2 in re.finditer(r'(\d+\.\d+)\s*\n?\s*EACH', ctx):
                     qty = float(m2.group(1))
-                    if qty >= 6:  # qty หน่วยขาย (ไม่ใช่ pack)
+                    if qty >= 6:
                         result["po_items"]["canvas"] += qty
                     break
-
             elif 'รองเทคาแตะ' in line or 'หหนทบ' in line or 'สวม' in line:
                 ctx = '\n'.join(lines[j:j+15])
-                # หา รุ่น จาก context
                 is_212 = '212' in '\n'.join(lines[max(0,j-2):j+5]) or 'สวม' in line
                 is_200 = '200' in '\n'.join(lines[max(0,j-2):j+5]) or 'หหนทบ' in line
                 for m2 in re.finditer(r'(\d+\.\d+)\s*\n?\s*EACH', ctx):
@@ -143,21 +126,18 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
                             result["po_items"]["foam200"] += qty
                     break
 
-    # Parse ใบแบ่งสินค้า
     current_branch = None
     for pi in dist_pages:
         text = doc[pi].get_text()
         lines = text.split('\n')
 
         for j, line in enumerate(lines):
-            # หาสาขา
             bm = re.search(r'กระจายไปสาขา\s+(\d{5})\s+(.*)', line)
             if bm:
                 code = int(bm.group(1))
                 name_raw = bm.group(2).strip()
                 current_branch = code
                 if code not in result["branches"]:
-                    # lookup master
                     master = BRANCH_MASTER.get(code, {})
                     result["branches"][code] = {
                         "name": master.get("name_en") or name_raw,
@@ -165,13 +145,10 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
                         "canvas": 0, "foam200": 0, "foam212": 0,
                     }
 
-            # หาจำนวนสินค้า: บรรทัดตัวเลขลอยๆ เช่น " 12.00"
             if current_branch and re.match(r'^\s*\d+\.\d+\s*$', line):
                 qty = float(line.strip())
                 if qty < 3:
-                    continue  # น้อยเกิน ข้ามไป
-
-                # ดู context ก่อนหน้า
+                    continue
                 ctx = ' '.join(lines[max(0, j-8):j])
                 if '212' in ctx or ('สวม' in ctx and '200' not in ctx):
                     result["branches"][current_branch]["foam212"] += qty
@@ -192,9 +169,9 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
     wb_out = Workbook()
     wb_out.remove(wb_out.active)
 
-    # Sheet สรุป
+    # Sheet สรุป — แก้ "Invoice No." → "PO No."
     ws_sum = wb_out.create_sheet("สรุปทุกสาขา")
-    headers = ["ลำดับ", "SO No.", "Invoice No.", "สาขา (EN)", "สาขา (TH)", "รหัส",
+    headers = ["ลำดับ", "SO No.", "PO No.", "สาขา (EN)", "สาขา (TH)", "รหัส",
                "ผ้าใบ (คู่)", "ฟองน้ำ200 (คู่)", "ฟองน้ำ212 (คู่)", "กล่อง", "กล่องที่"]
     ws_sum.append(headers)
     for cell in ws_sum[1]:
@@ -273,7 +250,6 @@ with st.sidebar:
 - 🔀 ฟองน้ำ **1 โหล** + ผ้าใบ **6 คู่** = 1 กล่อง
     """)
 
-# defaults สำหรับ Excel
 company = "นันยางมาร์เก็ตติ้ง จำกัด"
 invoice_no = ""
 invoice_date = date.today()
@@ -313,7 +289,7 @@ if analyze_btn and uploaded:
         st.session_state.parsed_files[f.name] = parsed
 
         for code, b in parsed["branches"].items():
-            key = f"{parsed['po_no']}_{code}"  # key รวม PO+สาขา เพื่อเรียงตาม PO
+            key = f"{parsed['po_no']}_{code}"
             if key in merged_map:
                 merged_map[key]["canvas"] += b["canvas"]
                 merged_map[key]["foam200"] += b["foam200"]
@@ -354,7 +330,6 @@ if branches:
     st.markdown("---")
     st.subheader("🏪 สรุปรายละเอียดแต่ละสาขา")
 
-    # สร้าง dashboard table
     import pandas as pd
     rows = []
     for b in branches:
@@ -362,16 +337,16 @@ if branches:
         box_labels = ", ".join(f"{k+1}/{bx_count}" for k in range(bx_count))
         box_types = " | ".join(bx["label"] for bx in b["boxes"])
         rows.append({
-            "SO No.": b.get("po_no",""),
-            "เลขที่ PO": b.get("invoice_no",""),
-            "สาขา": b["name"],
-            "ชื่อไทย": b["name_th"],
-            "สาขา": str(b["upfront"]),
+            "SO No.":      b.get("po_no",""),
+            "PO No.":      b.get("invoice_no",""),
+            "สาขา (EN)":  b["name"],
+            "สาขา (TH)":  b["name_th"],
+            "รหัส":        str(b["upfront"]),
             "ผ้าใบ (คู่)": int(b["canvas"]),
-            "F200 (คู่)": int(b["foam200"]),
-            "F212 (คู่)": int(b["foam212"]),
-            "กล่อง": bx_count,
-            "กล่องที่": box_labels,
+            "F200 (คู่)":  int(b["foam200"]),
+            "F212 (คู่)":  int(b["foam212"]),
+            "กล่อง":       bx_count,
+            "กล่องที่":    box_labels,
             "รายละเอียดกล่อง": box_types,
         })
     df = pd.DataFrame(rows)
@@ -380,10 +355,11 @@ if branches:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "SO No.":    st.column_config.TextColumn("SO No.", width="small"),
-            "เลขที่ PO": st.column_config.TextColumn("เลขที่ PO", width="small"),
-            "สาขา":      st.column_config.TextColumn("สาขา (EN)", width="medium"),
-            "ชื่อไทย":   st.column_config.TextColumn("สาขา (TH)", width="medium"),
+            "SO No.":      st.column_config.TextColumn("SO No.", width="small"),
+            "PO No.":      st.column_config.TextColumn("PO No.", width="small"),
+            "สาขา (EN)":  st.column_config.TextColumn("สาขา (EN)", width="medium"),
+            "สาขา (TH)":  st.column_config.TextColumn("สาขา (TH)", width="medium"),
+            "รหัส":        st.column_config.TextColumn("รหัส", width="small"),
             "ผ้าใบ (คู่)": st.column_config.NumberColumn("ผ้าใบ (คู่)", width="small"),
             "F200 (คู่)":  st.column_config.NumberColumn("F200 (คู่)", width="small"),
             "F212 (คู่)":  st.column_config.NumberColumn("F212 (คู่)", width="small"),
