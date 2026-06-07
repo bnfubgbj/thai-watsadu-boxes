@@ -90,7 +90,7 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
     }
     """
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    result = {"po_no": "", "invoice_no": "", "po_items": {"canvas": 0, "foam200": 0, "foam212": 0},
+    result = {"po_no": "", "invoice_no": "", "ship_date": "", "po_items": {"canvas": 0, "foam200": 0, "foam212": 0},
               "branches": {}, "errors": [], "filename": filename}
 
     # หาเลข PO จากหน้าแรก
@@ -180,19 +180,6 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
     doc.close()
     return result
 
-def verify_po_vs_dist(po_items: dict, branches: dict) -> dict:
-    """เปรียบเทียบยอดใบสั่งซื้อ vs ใบแบ่งสินค้า"""
-    dist = {"canvas": 0, "foam200": 0, "foam212": 0}
-    for b in branches.values():
-        dist["canvas"] += b["canvas"]
-        dist["foam200"] += b["foam200"]
-        dist["foam212"] += b["foam212"]
-
-    result = {}
-    for key in ["canvas", "foam200", "foam212"]:
-        diff = po_items[key] - dist[key]
-        result[key] = {"po": po_items[key], "dist": dist[key], "diff": diff, "ok": diff == 0}
-    return result
 
 # ─── Excel generation ──────────────────────────────────────────────────────────
 def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
@@ -256,7 +243,7 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
             ws["E4"] = b["name_th"] or b["name"]
             ws["D5"] = f"   {company}"
             ws["E6"] = b.get("invoice_no","") or invoice_no
-            ws["E7"] = invoice_date if invoice_date else ""
+            ws["E7"] = b.get("ship_date","") or str(invoice_date)
             ws["A9"] = f"กล่องที่  {box_label}        รวม  {bx_total}  กล่อง        ({box['label']})"
             ws["A9"].font = Font(name="AngsanaUPC", size=25, bold=True)
             ws["A9"].alignment = Alignment(horizontal="center", vertical="center")
@@ -331,6 +318,7 @@ if analyze_btn and uploaded:
             else:
                 merged_map[key] = {**b, "upfront": code, "po_no": parsed["po_no"],
                                    "invoice_no": parsed.get("invoice_no",""),
+                                   "ship_date": parsed.get("ship_date",""),
                                    "srcFiles": [f.name]}
         prog.progress((i+1) / len(uploaded))
 
@@ -341,20 +329,6 @@ if analyze_btn and uploaded:
     st.session_state.all_branches = list(merged_map.values())
     prog.empty()
 
-# ─── Verify PO vs Dist ─────────────────────────────────────────────────────────
-if st.session_state.parsed_files:
-    with st.expander("🔎 ตรวจสอบยอด ใบสั่งซื้อ vs ใบแบ่งสินค้า", expanded=True):
-        for fname, parsed in st.session_state.parsed_files.items():
-            st.markdown(f"**📄 {fname}** (PO: {parsed['po_no'] or 'ไม่พบ'})")
-            verify = verify_po_vs_dist(parsed["po_items"], parsed["branches"])
-            cols = st.columns(3)
-            labels = {"canvas": "ผ้าใบ (คู่)", "foam200": "ฟองน้ำ200 (คู่)", "foam212": "ฟองน้ำ212 (คู่)"}
-            for ci, (key, lbl) in enumerate(labels.items()):
-                v = verify[key]
-                icon = "✅" if v["ok"] else "❌"
-                diff_txt = "" if v["ok"] else f" (ต่าง {v['diff']:+.0f})"
-                cols[ci].metric(f"{icon} {lbl}", f"{v['po']:.0f}", f"แบ่ง: {v['dist']:.0f}{diff_txt}")
-            st.divider()
 
 # ─── Results ───────────────────────────────────────────────────────────────────
 branches = st.session_state.all_branches
@@ -386,10 +360,10 @@ if branches:
         box_types = " | ".join(bx["label"] for bx in b["boxes"])
         rows.append({
             "SO No.": b.get("po_no",""),
-            "Invoice": b.get("invoice_no",""),
+            "เลขที่ PO": b.get("invoice_no",""),
             "สาขา": b["name"],
             "ชื่อไทย": b["name_th"],
-            "รหัส": str(b["upfront"]),
+            "สาขา": str(b["upfront"]),
             "ผ้าใบ (คู่)": int(b["canvas"]),
             "F200 (คู่)": int(b["foam200"]),
             "F212 (คู่)": int(b["foam212"]),
@@ -404,10 +378,9 @@ if branches:
         hide_index=True,
         column_config={
             "SO No.":    st.column_config.TextColumn("SO No.", width="small"),
-            "Invoice":   st.column_config.TextColumn("Invoice No.", width="small"),
+            "เลขที่ PO": st.column_config.TextColumn("เลขที่ PO", width="small"),
             "สาขา":      st.column_config.TextColumn("สาขา (EN)", width="medium"),
             "ชื่อไทย":   st.column_config.TextColumn("สาขา (TH)", width="medium"),
-            "รหัส":      st.column_config.TextColumn("รหัส", width="small"),
             "ผ้าใบ (คู่)": st.column_config.NumberColumn("ผ้าใบ (คู่)", width="small"),
             "F200 (คู่)":  st.column_config.NumberColumn("F200 (คู่)", width="small"),
             "F212 (คู่)":  st.column_config.NumberColumn("F212 (คู่)", width="small"),
