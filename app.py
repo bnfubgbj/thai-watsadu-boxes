@@ -93,11 +93,14 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
     result = {"po_no": "", "invoice_no": "", "ship_date": "", "po_items": {"canvas": 0, "foam200": 0, "foam212": 0},
               "branches": {}, "errors": [], "filename": filename}
 
-    # หาเลข PO จากหน้าแรก
+    # หาเลข SO, Invoice, Ship Date จากหน้าแรก
     first_text = doc[0].get_text()
-    m = re.search(r'SO\d+-\d+', first_text)
-    if m:
-        result["po_no"] = m.group(0)
+    m_so   = re.search(r'SO\d+-\d+', first_text)
+    m_inv  = re.search(r'ใบสสงซซอเลขททส\s+(\d+)', first_text)
+    m_ship = re.search(r'Ship Date\s*([\d/]+)', first_text)
+    if m_so:   result["po_no"]      = m_so.group(0)
+    if m_inv:  result["invoice_no"] = m_inv.group(1)
+    if m_ship: result["ship_date"]  = m_ship.group(1)
 
     # ─ ใบสั่งซื้อ: หน้าที่มี "ใบสสงซซอ" หรือ "ใบสั่งซื้อ" ─
     # นับ qty EACH จาก column จำนวน(หน่วยขาย)
