@@ -1,5 +1,5 @@
 import streamlit as st
-from openai import OpenAI
+import google.generativeai as genai
 import base64
 import json
 import math
@@ -141,7 +141,8 @@ def calc_boxes(canvas_pairs: int, foam_dozen: float) -> list[dict]:
 
 # ─── AI: analyse one file ──────────────────────────────────────────────────────
 def analyse_file(file_bytes: bytes, mime: str, api_key: str) -> list[dict]:
-    client = OpenAI(api_key=api_key)
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
 
     prompt = """คุณคือผู้เชี่ยวชาญอ่านใบแบ่งสินค้ารองเท้าของไทวัสดุ (CRC Thai Watsadu)
 
@@ -155,24 +156,17 @@ def analyse_file(file_bytes: bytes, mime: str, api_key: str) -> list[dict]:
 
 หมายเหตุ: EACH = คู่, DOZEN = โหล (12 คู่)"""
 
-    # PDF → แปลงเป็นรูปทีละหน้าแล้วรวม branches
     if mime == "application/pdf":
         pages_b64 = pdf_to_images_b64(file_bytes)
         all_parsed_branches = []
         invoice_no_found = ""
         for page_b64 in pages_b64:
-            resp = client.chat.completions.create(
-                model="gpt-4o",
-                max_tokens=2000,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{page_b64}"}},
-                        {"type": "text", "text": prompt},
-                    ],
-                }],
-            )
-            raw = resp.choices[0].message.content.strip()
+            img_data = base64.b64decode(page_b64)
+            resp = model.generate_content([
+                {"mime_type": "image/png", "data": img_data},
+                prompt,
+            ])
+            raw = resp.text.strip()
             try:
                 page_parsed = json.loads(raw.replace("```json", "").replace("```", "").strip())
                 all_parsed_branches.extend(page_parsed.get("branches", []))
@@ -182,20 +176,10 @@ def analyse_file(file_bytes: bytes, mime: str, api_key: str) -> list[dict]:
                 pass
         parsed = {"branches": all_parsed_branches, "invoiceNo": invoice_no_found}
     else:
-        # รูปภาพปกติ
-        b64 = base64.standard_b64encode(file_bytes).decode()
-        resp = client.chat.completions.create(
-            model="gpt-4o",
-            max_tokens=2000,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                    {"type": "text", "text": prompt},
-                ],
-            }],
-        )
-        raw = resp.choices[0].message.content.strip()
+        from PIL import Image
+        img = Image.open(io.BytesIO(file_bytes))
+        resp = model.generate_content([img, prompt])
+        raw = resp.text.strip()
         parsed = json.loads(raw.replace("```json", "").replace("```", "").strip())
 
     result = []
@@ -328,9 +312,9 @@ if "file_results" not in st.session_state:
 # ─── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ⚙️ ตั้งค่า")
-    api_key = st.text_input("OpenAI API Key", type="password",
-                            placeholder="sk-...",
-                            help="ดูได้จาก platform.openai.com/api-keys")
+    api_key = st.text_input("Google Gemini API Key", type="password",
+                            placeholder="AIza...",
+                            help="ดูได้จาก aistudio.google.com/app/apikey")
     st.markdown("---")
     st.markdown("### 📋 เงื่อนไขการบรรจุกล่อง")
     st.markdown("""
@@ -375,7 +359,7 @@ with col_btn2:
         st.rerun()
 
 if not api_key:
-    st.info("💡 กรอก **OpenAI API Key** ในแถบซ้ายก่อนเริ่มใช้งาน")
+    st.info("💡 กรอก **Google Gemini API Key** ในแถบซ้ายก่อนเริ่มใช้งาน")
 
 # ─── Analyse ───────────────────────────────────────────────────────────────────
 if analyze_btn and uploaded and api_key:
