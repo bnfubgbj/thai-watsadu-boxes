@@ -90,7 +90,7 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
     }
     """
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    result = {"po_no": "", "po_items": {"canvas": 0, "foam200": 0, "foam212": 0},
+    result = {"po_no": "", "invoice_no": "", "po_items": {"canvas": 0, "foam200": 0, "foam212": 0},
               "branches": {}, "errors": [], "filename": filename}
 
     # หาเลข PO จากหน้าแรก
@@ -204,21 +204,20 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
 
     # Sheet สรุป
     ws_sum = wb_out.create_sheet("สรุปทุกสาขา")
-    headers = ["ลำดับ", "สาขา (EN)", "สาขา (TH)", "รหัส",
-               "ผ้าใบ (คู่)", "ฟองน้ำ200 (โหล)", "ฟองน้ำ212 (โหล)", "กล่อง", "กล่องที่"]
+    headers = ["ลำดับ", "SO No.", "Invoice No.", "สาขา (EN)", "สาขา (TH)", "รหัส",
+               "ผ้าใบ (คู่)", "ฟองน้ำ200 (คู่)", "ฟองน้ำ212 (คู่)", "กล่อง", "กล่องที่"]
     ws_sum.append(headers)
     for cell in ws_sum[1]:
         cell.font = Font(name="Arial", bold=True, size=11, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="C62828")
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    g_box = 1
     for i, b in enumerate(all_branches):
-        box_nums = ", ".join(f"{g_box+k}/{total_boxes}" for k in range(len(b["boxes"])))
-        ws_sum.append([i+1, b["name"], b["name_th"], str(b["upfront"]),
-                       b["canvas"], b["foam200"] / 12, b["foam212"] / 12,
-                       len(b["boxes"]), box_nums])
-        g_box += len(b["boxes"])
+        bx_count = len(b["boxes"])
+        box_nums = ", ".join(f"{k+1}/{bx_count}" for k in range(bx_count))
+        ws_sum.append([i+1, b.get("po_no",""), b.get("invoice_no",""), b["name"], b["name_th"], str(b["upfront"]),
+                       b["canvas"], b["foam200"], b["foam212"],
+                       bx_count, box_nums])
 
     for col in ws_sum.columns:
         max_len = max(len(str(c.value or "")) for c in col)
@@ -226,11 +225,11 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
     ws_sum.freeze_panes = "A2"
 
     # Sheet ตามสาขา
-    g_box = 1
     for b in all_branches:
+        bx_total = len(b["boxes"])
         for box_idx, box in enumerate(b["boxes"]):
-            box_label = f"{g_box}/{total_boxes}"
-            sname = b["name"][:25] if len(b["boxes"]) == 1 else f"{b['name'][:18]} {g_box}-{total_boxes}"
+            box_label = f"{box_idx+1}/{bx_total}"
+            sname = b["name"][:25] if bx_total == 1 else f"{b['name'][:18]} {box_idx+1}-{bx_total}"
             sname = sname[:31].translate(str.maketrans('', '', '/\\*?[]:\'"'))
 
             ws = wb_out.create_sheet(sname)
@@ -256,12 +255,11 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
             ws["D3"] = b["name"]
             ws["E4"] = b["name_th"] or b["name"]
             ws["D5"] = f"   {company}"
-            ws["E6"] = invoice_no
+            ws["E6"] = b.get("invoice_no","") or invoice_no
             ws["E7"] = invoice_date if invoice_date else ""
-            ws["A9"] = f"กล่องที่  {box_label}        รวม  {total_boxes}  กล่อง        ({box['label']})"
+            ws["A9"] = f"กล่องที่  {box_label}        รวม  {bx_total}  กล่อง        ({box['label']})"
             ws["A9"].font = Font(name="AngsanaUPC", size=25, bold=True)
             ws["A9"].alignment = Alignment(horizontal="center", vertical="center")
-            g_box += 1
 
     buf = io.BytesIO()
     wb_out.save(buf)
@@ -325,14 +323,15 @@ if analyze_btn and uploaded:
         st.session_state.parsed_files[f.name] = parsed
 
         for code, b in parsed["branches"].items():
-            key = str(code)
+            key = f"{parsed['po_no']}_{code}"  # key รวม PO+สาขา เพื่อเรียงตาม PO
             if key in merged_map:
                 merged_map[key]["canvas"] += b["canvas"]
                 merged_map[key]["foam200"] += b["foam200"]
                 merged_map[key]["foam212"] += b["foam212"]
-                merged_map[key]["srcFiles"].append(f.name)
             else:
-                merged_map[key] = {**b, "upfront": code, "srcFiles": [f.name]}
+                merged_map[key] = {**b, "upfront": code, "po_no": parsed["po_no"],
+                                   "invoice_no": parsed.get("invoice_no",""),
+                                   "srcFiles": [f.name]}
         prog.progress((i+1) / len(uploaded))
 
     for b in merged_map.values():
@@ -376,35 +375,47 @@ if branches:
                      unsafe_allow_html=True)
 
     st.markdown("---")
-    st.subheader("🏪 รายละเอียดแต่ละสาขา")
-    g_box = 1
+    st.subheader("🏪 สรุปรายละเอียดแต่ละสาขา")
+
+    # สร้าง dashboard table
+    import pandas as pd
+    rows = []
     for b in branches:
         bx_count = len(b["boxes"])
-        box_nums = " ".join(f'<span class="badge b-num">{g_box+k}/{total_boxes}</span>'
-                            for k in range(bx_count))
-        detail = " ".join(f'<span class="badge b-{bx["type"]}">{bx["label"]}</span>'
-                          for bx in b["boxes"])
-        st.markdown(f"""
-        <div class="branch-card">
-          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
-            <div>
-              <div style="font-weight:700;font-size:1rem">{b["name"]}</div>
-              <div style="font-size:.8rem;color:#888">{b["name_th"]} · รหัส {b["upfront"]}</div>
-              <div style="font-size:.85rem;color:#555;margin-top:.3rem">
-                {'🎽 ผ้าใบ <b>'+str(b["canvas"])+'</b> คู่&nbsp;&nbsp;' if b["canvas"] else ''}
-                {'🩴 ฟองน้ำ200 <b>'+str(b["foam200"])+'</b> คู่&nbsp;&nbsp;' if b["foam200"] else ''}
-                {'🩴 ฟองน้ำ212 <b>'+str(b["foam212"])+'</b> คู่' if b["foam212"] else ''}
-              </div>
-            </div>
-            <div style="text-align:right">
-              <div style="font-size:.8rem;color:#888">กล่องที่</div>
-              <div>{box_nums}</div>
-            </div>
-          </div>
-          <div style="margin-top:.5rem">{detail}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        g_box += bx_count
+        box_labels = ", ".join(f"{k+1}/{bx_count}" for k in range(bx_count))
+        box_types = " | ".join(bx["label"] for bx in b["boxes"])
+        rows.append({
+            "SO No.": b.get("po_no",""),
+            "Invoice": b.get("invoice_no",""),
+            "สาขา": b["name"],
+            "ชื่อไทย": b["name_th"],
+            "รหัส": str(b["upfront"]),
+            "ผ้าใบ (คู่)": int(b["canvas"]),
+            "F200 (คู่)": int(b["foam200"]),
+            "F212 (คู่)": int(b["foam212"]),
+            "กล่อง": bx_count,
+            "กล่องที่": box_labels,
+            "รายละเอียดกล่อง": box_types,
+        })
+    df = pd.DataFrame(rows)
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "SO No.":    st.column_config.TextColumn("SO No.", width="small"),
+            "Invoice":   st.column_config.TextColumn("Invoice No.", width="small"),
+            "สาขา":      st.column_config.TextColumn("สาขา (EN)", width="medium"),
+            "ชื่อไทย":   st.column_config.TextColumn("สาขา (TH)", width="medium"),
+            "รหัส":      st.column_config.TextColumn("รหัส", width="small"),
+            "ผ้าใบ (คู่)": st.column_config.NumberColumn("ผ้าใบ (คู่)", width="small"),
+            "F200 (คู่)":  st.column_config.NumberColumn("F200 (คู่)", width="small"),
+            "F212 (คู่)":  st.column_config.NumberColumn("F212 (คู่)", width="small"),
+            "กล่อง":       st.column_config.NumberColumn("กล่อง", width="small"),
+            "กล่องที่":    st.column_config.TextColumn("กล่องที่", width="medium"),
+            "รายละเอียดกล่อง": st.column_config.TextColumn("รายละเอียด", width="large"),
+        }
+    )
 
     st.markdown("---")
     st.subheader("📥 ดาวน์โหลด Excel")
