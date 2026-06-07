@@ -228,6 +228,20 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
             ws["A9"].font = Font(name="AngsanaUPC", size=25, bold=True)
             ws["A9"].alignment = Alignment(horizontal="center", vertical="center")
 
+            # ── Print setup: พอดีหน้า A4 ──────────────────────────────────
+            ws.print_area = "A1:G9"
+            ws.page_setup.paperSize  = ws.PAPERSIZE_A4
+            ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+            ws.page_setup.fitToPage  = True
+            ws.page_setup.fitToWidth = 1
+            ws.page_setup.fitToHeight = 1
+            ws.page_margins.left   = 0.3
+            ws.page_margins.right  = 0.3
+            ws.page_margins.top    = 0.3
+            ws.page_margins.bottom = 0.3
+            ws.page_margins.header = 0
+            ws.page_margins.footer = 0
+
     buf = io.BytesIO()
     wb_out.save(buf)
     buf.seek(0)
