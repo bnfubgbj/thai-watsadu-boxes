@@ -1,5 +1,6 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import base64
 import json
 import math
@@ -142,8 +143,7 @@ def calc_boxes(canvas_pairs: int, foam_dozen: float) -> list[dict]:
 
 # ─── AI: analyse one file ──────────────────────────────────────────────────────
 def analyse_file(file_bytes: bytes, mime: str, api_key: str) -> list[dict]:
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    client = genai.Client(api_key=api_key)
 
     prompt = """คุณคือผู้เชี่ยวชาญอ่านใบแบ่งสินค้ารองเท้าของไทวัสดุ (CRC Thai Watsadu)
 
@@ -162,11 +162,13 @@ def analyse_file(file_bytes: bytes, mime: str, api_key: str) -> list[dict]:
         all_parsed_branches = []
         invoice_no_found = ""
         for page_b64 in pages_b64:
-            img_data = base64.b64decode(page_b64)
-            resp = model.generate_content([
-                {"mime_type": "image/png", "data": img_data},
-                prompt,
-            ])
+            resp = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[
+                    types.Part.from_bytes(data=base64.b64decode(page_b64), mime_type="image/png"),
+                    prompt,
+                ]
+            )
             raw = resp.text.strip()
             try:
                 page_parsed = json.loads(raw.replace("```json", "").replace("```", "").strip())
@@ -177,9 +179,13 @@ def analyse_file(file_bytes: bytes, mime: str, api_key: str) -> list[dict]:
                 pass
         parsed = {"branches": all_parsed_branches, "invoiceNo": invoice_no_found}
     else:
-        from PIL import Image
-        img = Image.open(io.BytesIO(file_bytes))
-        resp = model.generate_content([img, prompt])
+        resp = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                types.Part.from_bytes(data=file_bytes, mime_type=mime),
+                prompt,
+            ]
+        )
         raw = resp.text.strip()
         parsed = json.loads(raw.replace("```json", "").replace("```", "").strip())
 
