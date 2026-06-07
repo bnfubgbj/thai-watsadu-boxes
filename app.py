@@ -142,7 +142,7 @@ def calc_boxes(canvas_pairs: int, foam_dozen: float) -> list[dict]:
 # ─── AI: analyse one file ──────────────────────────────────────────────────────
 def analyse_file(file_bytes: bytes, mime: str, api_key: str) -> list[dict]:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.0-flash")
 
     prompt = """คุณคือผู้เชี่ยวชาญอ่านใบแบ่งสินค้ารองเท้าของไทวัสดุ (CRC Thai Watsadu)
 
