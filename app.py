@@ -272,11 +272,11 @@ with st.sidebar:
 - 🩴 ฟองน้ำ **2 โหล** = 1 กล่อง
 - 🔀 ฟองน้ำ **1 โหล** + ผ้าใบ **6 คู่** = 1 กล่อง
     """)
-    st.markdown("---")
-    st.markdown("### 📄 ข้อมูลใบรับสินค้า")
-    company = st.text_input("บริษัท", value="นันยางมาร์เก็ตติ้ง จำกัด")
-    invoice_no = st.text_input("Invoice No.", placeholder="II690423-007")
-    invoice_date = st.date_input("วันที่", value=date.today())
+
+# defaults สำหรับ Excel
+company = "นันยางมาร์เก็ตติ้ง จำกัด"
+invoice_no = ""
+invoice_date = date.today()
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
 st.markdown("""
