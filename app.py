@@ -319,6 +319,8 @@ with st.sidebar:
                             value=default_key,
                             placeholder="AIza...",
                             help="ดูได้จาก aistudio.google.com/app/apikey")
+    if default_key:
+        st.success("✅ API Key โหลดจาก Secrets แล้ว")
     st.markdown("---")
     st.markdown("### 📋 เงื่อนไขการบรรจุกล่อง")
     st.markdown("""
@@ -355,7 +357,7 @@ uploaded = st.file_uploader(
 col_btn1, col_btn2, col_btn3 = st.columns([2, 2, 6])
 with col_btn1:
     analyze_btn = st.button("🔍 วิเคราะห์ทั้งหมด", type="primary",
-                            disabled=not (uploaded and api_key))
+                            disabled=not uploaded)
 with col_btn2:
     if st.button("🗑️ ล้างผลลัพธ์"):
         st.session_state.all_branches = []
@@ -364,6 +366,13 @@ with col_btn2:
 
 if not api_key:
     st.info("💡 กรอก **Google Gemini API Key** ในแถบซ้ายก่อนเริ่มใช้งาน")
+
+# Auto-load key from secrets if available
+if not api_key:
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
 
 # ─── Analyse ───────────────────────────────────────────────────────────────────
 if analyze_btn and uploaded and api_key:
