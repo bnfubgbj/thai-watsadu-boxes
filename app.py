@@ -222,7 +222,7 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
             ws["D3"] = b["name"]
             ws["E4"] = b["name_th"] or b["name"]
             ws["D5"] = f"   {company}"
-            ws["E6"] = b.get("invoice_no","") or invoice_no
+            ws["E6"] = ""
             ws["E7"] = b.get("ship_date","") or str(invoice_date)
             ws["A9"] = f"กล่องที่  {box_label}        รวม  {bx_total}  กล่อง"
             ws["A9"].font = Font(name="AngsanaUPC", size=25, bold=True)
