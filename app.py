@@ -5,7 +5,7 @@ import io
 import copy
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import get_column_letter, column_index_from_string as ci
 from datetime import date
 import os
 
@@ -289,8 +289,7 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
             except Exception:
                 pass
 
-        from openpyxl.utils import column_index_from_string as ci
-        ws_all.cell(row=3+ro, column=ci("F")).value = b["upfront"] if str(b["upfront"]).isdigit() else ""
+            ws_all.cell(row=3+ro, column=ci("F")).value = b["upfront"] if str(b["upfront"]).isdigit() else ""
         ws_all.cell(row=3+ro, column=ci("D")).value = b["name"]
         ws_all.cell(row=4+ro, column=ci("E")).value = b["name_th"] or b["name"]
         ws_all.cell(row=5+ro, column=ci("D")).value = f"   {company}"
@@ -313,8 +312,7 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
             ws_all.row_breaks.append(Break(id=(label_idx + 1) * ROWS_PER_LABEL))
 
     total_rows = len(all_labels) * ROWS_PER_LABEL
-    from openpyxl.utils import get_column_letter
-    ws_all.print_area = f"A1:{get_column_letter(12)}{total_rows}"
+    ws_all.print_area = f"A1:L{total_rows}"
     ws_all.page_setup.paperSize   = ws_all.PAPERSIZE_A4
     ws_all.page_setup.orientation = ws_all.ORIENTATION_PORTRAIT
     ws_all.page_setup.fitToPage   = True
