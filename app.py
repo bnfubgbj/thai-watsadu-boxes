@@ -290,10 +290,13 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
                 pass
 
             ws_all.cell(row=3+ro, column=ci("F")).value = b["upfront"] if str(b["upfront"]).isdigit() else ""
-        ws_all.cell(row=3+ro, column=ci("D")).value = b["name"]
+        cell_d3 = ws_all.cell(row=3+ro, column=ci("D"))
+        cell_d3.value = b["name"]
+        cell_d3.alignment = Alignment(horizontal="center", vertical="center", shrink_to_fit=True)
+        cell_d3.font = Font(name="Arial", bold=True, size=18)
         ws_all.cell(row=4+ro, column=ci("E")).value = b["name_th"] or b["name"]
         ws_all.cell(row=5+ro, column=ci("D")).value = f"   {company}"
-        ws_all.cell(row=6+ro, column=ci("E")).value = ""
+        ws_all.cell(row=6+ro, column=ci("E")).value = invoice_no or ""
         ws_all.cell(row=7+ro, column=ci("E")).value = b.get("ship_date","") or str(invoice_date)
 
         cell_a9 = ws_all.cell(row=9+ro, column=1)
@@ -339,6 +342,9 @@ if "all_branches" not in st.session_state:
 with st.sidebar:
     st.markdown("## ⚙️ ตั้งค่า")
     st.markdown("---")
+    st.markdown("### 🧾 เลขที่ Invoice")
+    invoice_no = st.text_input("กรอกเลข Invoice (ถ้ามี)", value="", placeholder="เช่น II690423-007")
+    st.markdown("---")
     st.markdown("### 📋 เงื่อนไขกล่อง")
     st.markdown("""
 - 👟 ผ้าใบ **12 คู่** = 1 กล่อง
@@ -348,7 +354,6 @@ with st.sidebar:
     """)
 
 company = "นันยางมาร์เก็ตติ้ง จำกัด"
-invoice_no = ""
 invoice_date = date.today()
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
