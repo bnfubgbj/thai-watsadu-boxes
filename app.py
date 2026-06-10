@@ -89,6 +89,10 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
     m_inv  = re.search(r'(?:ใบสสงซซอเลขททส|ใบสั่งซื้อเลขที่)\s+(\d+)', first_text)
     m_ship = re.search(r'Ship Date\s*([\d/]+)', first_text)
     if m_so:   result["so_no"]       = m_so.group(0)
+    else:
+        # หา SO จากชื่อไฟล์ เช่น SO6906-0067
+        m_so_fn = re.search(r'SO\d+-\d+', filename)
+        if m_so_fn: result["so_no"] = m_so_fn.group(0)
     if m_inv:  result["po_no"]      = m_inv.group(1)
     if m_ship: result["ship_date"]  = m_ship.group(1)
 
