@@ -292,10 +292,18 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
                 pass
 
             ws_all.cell(row=3+ro, column=ci("F")).value = b["upfront"] if str(b["upfront"]).isdigit() else ""
+        # ชื่อสาขา EN: merge D-K row 3, font size คงที่ 14pt
+        try:
+            ws_all.merge_cells(
+                start_row=3+ro, start_column=ci("D"),
+                end_row=3+ro,   end_column=ci("K"),
+            )
+        except Exception:
+            pass
         cell_d3 = ws_all.cell(row=3+ro, column=ci("D"))
         cell_d3.value = b["name"]
-        cell_d3.alignment = Alignment(horizontal="center", vertical="center", shrink_to_fit=True)
-        cell_d3.font = Font(name="Arial", bold=True, size=18)
+        cell_d3.alignment = Alignment(horizontal="center", vertical="center", wrap_text=False, shrink_to_fit=False)
+        cell_d3.font = Font(name="Arial", bold=True, size=14)
         ws_all.cell(row=4+ro, column=ci("E")).value = b["name_th"] or b["name"]
         ws_all.cell(row=5+ro, column=ci("D")).value = f"   {company}"
         ws_all.cell(row=6+ro, column=ci("E")).value = invoice_no or ""
