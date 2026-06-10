@@ -228,6 +228,14 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
                     if cell.value and not str(cell.value).startswith("=VLOOKUP"):
                         nc.value = cell.value
 
+            # Copy รูปโลโก้จาก template
+            for img in tpl_ws._images:
+                try:
+                    img_copy = copy.deepcopy(img)
+                    ws.add_image(img_copy)
+                except Exception:
+                    pass
+
             ws["F3"] = b["upfront"] if str(b["upfront"]).isdigit() else ""
             ws["D3"] = b["name"]
             ws["E4"] = b["name_th"] or b["name"]
