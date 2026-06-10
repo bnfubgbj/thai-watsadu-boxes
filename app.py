@@ -262,10 +262,12 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
                 end_row=merged.max_row + ro,   end_column=merged.max_col,
             )
 
+        # Row heights ปรับให้พอดีครึ่งหน้า A4 (scale 1.367)
+        HALF_A4_SCALE = 1.367
         for row in tpl_ws.iter_rows(min_row=1, max_row=ROWS_PER_LABEL):
             r = row[0].row
             if r in tpl_ws.row_dimensions:
-                ws_all.row_dimensions[r + ro].height = tpl_ws.row_dimensions[r].height
+                ws_all.row_dimensions[r + ro].height = round(tpl_ws.row_dimensions[r].height * HALF_A4_SCALE, 1)
             for cell in row:
                 nc = ws_all.cell(row=cell.row + ro, column=cell.column)
                 if cell.has_style:
