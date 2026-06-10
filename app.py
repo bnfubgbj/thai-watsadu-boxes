@@ -257,6 +257,9 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
         ro = label_idx * ROWS_PER_LABEL  # row offset
 
         for merged in tpl_ws.merged_cells.ranges:
+            # ข้าม D3:E3 เดิม เพราะจะ merge ใหม่เป็น D3:K3
+            if merged.min_row == 3 and merged.min_col == 4 and merged.max_col == 5:
+                continue
             ws_all.merge_cells(
                 start_row=merged.min_row + ro, start_column=merged.min_col,
                 end_row=merged.max_row + ro,   end_column=merged.max_col,
