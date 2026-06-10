@@ -246,6 +246,19 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
             ws["A9"].font = Font(name="AngsanaUPC", size=25, bold=True)
             ws["A9"].alignment = Alignment(horizontal="center", vertical="center")
 
+            # ── เส้นกรอบด้านล่าง row 9 ──────────────────────────────────
+            from openpyxl.styles import Border, Side
+            thin = Side(style='thin')
+            for col_idx in range(1, 13):  # A=1 ถึง L=12
+                cell = ws.cell(row=9, column=col_idx)
+                existing = cell.border
+                cell.border = Border(
+                    top=existing.top,
+                    left=existing.left,
+                    right=existing.right,
+                    bottom=thin,
+                )
+
             # ── Print setup: พอดีหน้า A4 ──────────────────────────────────
             ws.print_area = "A1:L9"
             ws.page_setup.paperSize  = ws.PAPERSIZE_A4
