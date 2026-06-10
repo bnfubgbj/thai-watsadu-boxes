@@ -131,7 +131,10 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
         text = doc[pi].get_text()
         lines = text.split('\n')
 
-        for j, line in enumerate(lines):
+        idx = 0
+        while idx < len(lines):
+            line = lines[idx].strip()
+
             bm = re.search(r'กระจายไปสาขา\s+(\d{5})\s+(.*)', line)
             if bm:
                 code = int(bm.group(1))
@@ -144,19 +147,26 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
                         "name_th": master.get("name_th") or "",
                         "canvas": 0, "foam200": 0, "foam212": 0,
                     }
+                idx += 1
+                continue
 
-            if current_branch and re.match(r'^\s*\d+\.\d+\s*$', line):
-                qty = float(line.strip())
-                if qty < 3:
-                    continue
-                ctx = ' '.join(lines[max(0, j-8):j])
-                if '212' in ctx or ('สวม' in ctx and '200' not in ctx):
-                    result["branches"][current_branch]["foam212"] += qty
-                elif '200' in ctx or 'หหนทบ' in ctx or 'แตะ' in ctx:
-                    result["branches"][current_branch]["foam200"] += qty
-                elif 'ผคาใบ' in ctx or '205' in ctx:
-                    result["branches"][current_branch]["canvas"] += qty
+            if current_branch and ('รองเทคาผคาใบ' in line or 'รองเทคาแตะ' in line):
+                product_line = line
+                qty = 0
+                for k in range(idx + 1, min(idx + 10, len(lines))):
+                    m = re.match(r'^\s*([\d]+\.[\d]+)\s*$', lines[k])
+                    if m:
+                        qty = float(m.group(1))
+                        break
+                if qty > 0:
+                    if 'ผคาใบ' in product_line or '205' in product_line:
+                        result["branches"][current_branch]["canvas"] += qty
+                    elif '212' in product_line or ('สวม' in product_line and '200' not in product_line):
+                        result["branches"][current_branch]["foam212"] += qty
+                    elif '200' in product_line or 'หหนทบ' in product_line or 'แตะ' in product_line:
+                        result["branches"][current_branch]["foam200"] += qty
 
+            idx += 1
     doc.close()
     return result
 
