@@ -57,20 +57,30 @@ BRANCH_MASTER = load_branch_master()
 # ─── Box calculation ───────────────────────────────────────────────────────────
 def calc_boxes(canvas_pairs, foam_dozen) -> list[dict]:
     boxes, cp, fd = [], int(canvas_pairs), float(foam_dozen)
+    # mixed: ฟองน้ำ 1 โหล + ผ้าใบ 6 คู่
     mixed = min(int(fd), int(cp) // 6)
     for _ in range(mixed):
         boxes.append({"type": "mixed", "label": "ฟองน้ำ 1 โหล + ผ้าใบ 6 คู่"})
         fd -= 1; cp -= 6
+    # ฟองน้ำล้วน 2 โหล/กล่อง
     while fd >= 2:
         boxes.append({"type": "foam", "label": "ฟองน้ำ 2 โหล"})
         fd -= 2
+    # เศษฟองน้ำ 1 โหล
     if fd >= 1:
         if cp >= 6:
+            # ผ้าใบเหลือ >= 6 → mixed
             boxes.append({"type": "mixed", "label": "ฟองน้ำ 1 โหล + ผ้าใบ 6 คู่"})
             cp -= 6
+        elif cp > 0:
+            # ผ้าใบเหลือ < 6 แต่มีอยู่ → รวมกล่องเดียว
+            boxes.append({"type": "mixed", "label": f"ฟองน้ำ 1 โหล + ผ้าใบ {cp} คู่"})
+            cp = 0
         else:
+            # ไม่มีผ้าใบเลย
             boxes.append({"type": "foam", "label": "ฟองน้ำ 1 โหล"})
         fd = 0
+    # ผ้าใบที่เหลือ
     while cp >= 12:
         boxes.append({"type": "canvas", "label": "ผ้าใบ 12 คู่"})
         cp -= 12
@@ -221,78 +231,101 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
         ws_sum.column_dimensions[get_column_letter(col[0].column)].width = min(max_len + 4, 40)
     ws_sum.freeze_panes = "A2"
 
-    # Sheet ตามสาขา
+    # Sheet ใบปะหน้าทั้งหมด (2 ใบ/หน้า แนวตั้ง)
+    from openpyxl.styles import Border, Side
+    from openpyxl.worksheet.pagebreak import Break
+    thin = Side(style='thin')
+    ROWS_PER_LABEL = 9
+    LABELS_PER_PAGE = 2
+
+    ws_all = wb_out.create_sheet("ใบปะหน้าทั้งหมด")
+
+    for col_l, cd in tpl_ws.column_dimensions.items():
+        ws_all.column_dimensions[col_l].width = cd.width
+
+    all_labels = []
     for b in all_branches:
         bx_total = len(b["boxes"])
         for box_idx, box in enumerate(b["boxes"]):
-            box_label = f"{box_idx+1}/{bx_total}"
-            sname = b["name"][:25] if bx_total == 1 else f"{b['name'][:18]} {box_idx+1}-{bx_total}"
-            sname = sname[:31].translate(str.maketrans('', '', '/\\*?[]:\'"'))
+            all_labels.append({"b": b, "box_idx": box_idx, "bx_total": bx_total, "box": box})
 
-            ws = wb_out.create_sheet(sname)
-            for merged in tpl_ws.merged_cells.ranges:
-                ws.merge_cells(str(merged))
-            for col_l, cd in tpl_ws.column_dimensions.items():
-                ws.column_dimensions[col_l].width = cd.width
-            for row_n, rd in tpl_ws.row_dimensions.items():
-                ws.row_dimensions[row_n].height = rd.height
+    for label_idx, item in enumerate(all_labels):
+        b = item["b"]
+        box_idx = item["box_idx"]
+        bx_total = item["bx_total"]
+        box_label = f"{box_idx+1}/{bx_total}"
+        ro = label_idx * ROWS_PER_LABEL  # row offset
 
-            for row in tpl_ws.iter_rows():
-                for cell in row:
-                    nc = ws.cell(row=cell.row, column=cell.column)
-                    if cell.has_style:
-                        nc.font = copy.copy(cell.font)
-                        nc.border = copy.copy(cell.border)
-                        nc.fill = copy.copy(cell.fill)
-                        nc.alignment = copy.copy(cell.alignment)
-                    if cell.value and not str(cell.value).startswith("=VLOOKUP"):
-                        nc.value = cell.value
+        for merged in tpl_ws.merged_cells.ranges:
+            ws_all.merge_cells(
+                start_row=merged.min_row + ro, start_column=merged.min_col,
+                end_row=merged.max_row + ro,   end_column=merged.max_col,
+            )
 
-            # Copy รูปโลโก้จาก template
-            for img in tpl_ws._images:
+        for row in tpl_ws.iter_rows(min_row=1, max_row=ROWS_PER_LABEL):
+            r = row[0].row
+            if r in tpl_ws.row_dimensions:
+                ws_all.row_dimensions[r + ro].height = tpl_ws.row_dimensions[r].height
+            for cell in row:
+                nc = ws_all.cell(row=cell.row + ro, column=cell.column)
+                if cell.has_style:
+                    nc.font      = copy.copy(cell.font)
+                    nc.border    = copy.copy(cell.border)
+                    nc.fill      = copy.copy(cell.fill)
+                    nc.alignment = copy.copy(cell.alignment)
+                if cell.value and not str(cell.value).startswith("=VLOOKUP"):
+                    nc.value = cell.value
+
+        for img in tpl_ws._images:
+            try:
+                img_copy = copy.deepcopy(img)
                 try:
-                    img_copy = copy.deepcopy(img)
-                    ws.add_image(img_copy)
+                    img_copy.anchor._from.row += ro
+                    if hasattr(img_copy.anchor, 'to') and img_copy.anchor.to:
+                        img_copy.anchor.to.row += ro
                 except Exception:
                     pass
+                ws_all.add_image(img_copy)
+            except Exception:
+                pass
 
-            ws["F3"] = b["upfront"] if str(b["upfront"]).isdigit() else ""
-            ws["D3"] = b["name"]
-            ws["E4"] = b["name_th"] or b["name"]
-            ws["D5"] = f"   {company}"
-            ws["E6"] = ""
-            ws["E7"] = b.get("ship_date","") or str(invoice_date)
-            ws["A9"] = f"กล่องที่  {box_label}        รวม  {bx_total}  กล่อง"
-            ws["A9"].font = Font(name="AngsanaUPC", size=25, bold=True)
-            ws["A9"].alignment = Alignment(horizontal="center", vertical="center")
+        from openpyxl.utils import column_index_from_string as ci
+        ws_all.cell(row=3+ro, column=ci("F")).value = b["upfront"] if str(b["upfront"]).isdigit() else ""
+        ws_all.cell(row=3+ro, column=ci("D")).value = b["name"]
+        ws_all.cell(row=4+ro, column=ci("E")).value = b["name_th"] or b["name"]
+        ws_all.cell(row=5+ro, column=ci("D")).value = f"   {company}"
+        ws_all.cell(row=6+ro, column=ci("E")).value = ""
+        ws_all.cell(row=7+ro, column=ci("E")).value = b.get("ship_date","") or str(invoice_date)
 
-            # ── เส้นกรอบด้านล่าง row 9 ──────────────────────────────────
-            from openpyxl.styles import Border, Side
-            thin = Side(style='thin')
-            for col_idx in range(1, 13):  # A=1 ถึง L=12
-                cell = ws.cell(row=9, column=col_idx)
-                existing = cell.border
-                cell.border = Border(
-                    top=existing.top,
-                    left=existing.left,
-                    right=existing.right,
-                    bottom=thin,
-                )
+        cell_a9 = ws_all.cell(row=9+ro, column=1)
+        cell_a9.value = f"กล่องที่  {box_label}        รวม  {bx_total}  กล่อง"
+        cell_a9.font = Font(name="AngsanaUPC", size=25, bold=True)
+        cell_a9.alignment = Alignment(horizontal="center", vertical="center")
 
-            # ── Print setup: พอดีหน้า A4 ──────────────────────────────────
-            ws.print_area = "A1:L9"
-            ws.page_setup.paperSize  = ws.PAPERSIZE_A4
-            ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
-            ws.page_setup.fitToPage  = True
-            ws.page_setup.fitToWidth = 1
-            ws.page_setup.fitToHeight = 1
-            ws.page_margins.left   = 0.3
-            ws.page_margins.right  = 0.3
-            ws.page_margins.top    = 0.3
-            ws.page_margins.bottom = 0.3
-            ws.page_margins.header = 0
-            ws.page_margins.footer = 0
+        for col_idx in range(1, 13):
+            nc = ws_all.cell(row=9+ro, column=col_idx)
+            nc.border = Border(
+                top=nc.border.top, left=nc.border.left,
+                right=nc.border.right, bottom=thin,
+            )
 
+        if (label_idx + 1) % LABELS_PER_PAGE == 0 and label_idx < len(all_labels) - 1:
+            ws_all.row_breaks.append(Break(id=(label_idx + 1) * ROWS_PER_LABEL))
+
+    total_rows = len(all_labels) * ROWS_PER_LABEL
+    from openpyxl.utils import get_column_letter
+    ws_all.print_area = f"A1:{get_column_letter(12)}{total_rows}"
+    ws_all.page_setup.paperSize   = ws_all.PAPERSIZE_A4
+    ws_all.page_setup.orientation = ws_all.ORIENTATION_PORTRAIT
+    ws_all.page_setup.fitToPage   = True
+    ws_all.page_setup.fitToWidth  = 1
+    ws_all.page_setup.fitToHeight = 0
+    ws_all.page_margins.left   = 0.3
+    ws_all.page_margins.right  = 0.3
+    ws_all.page_margins.top    = 0.3
+    ws_all.page_margins.bottom = 0.3
+    ws_all.page_margins.header = 0
+    ws_all.page_margins.footer = 0
     buf = io.BytesIO()
     wb_out.save(buf)
     buf.seek(0)
