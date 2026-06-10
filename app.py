@@ -263,7 +263,7 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
             )
 
         # Row heights ปรับให้พอดีครึ่งหน้า A4 (scale 1.367)
-        HALF_A4_SCALE = 1.367
+        HALF_A4_SCALE = 1.3256
         for row in tpl_ws.iter_rows(min_row=1, max_row=ROWS_PER_LABEL):
             r = row[0].row
             if r in tpl_ws.row_dimensions:
@@ -322,13 +322,15 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
     ws_all.page_setup.orientation = ws_all.ORIENTATION_PORTRAIT
     ws_all.page_setup.fitToPage   = True
     ws_all.page_setup.fitToWidth  = 1
-    ws_all.page_setup.fitToHeight = 0
-    ws_all.page_margins.left   = 0.3
-    ws_all.page_margins.right  = 0.3
-    ws_all.page_margins.top    = 0.3
-    ws_all.page_margins.bottom = 0.3
-    ws_all.page_margins.header = 0
-    ws_all.page_margins.footer = 0
+    ws_all.page_setup.fitToHeight = 0   # ไหลตามจำนวนหน้าอัตโนมัติ
+    ws_all.page_setup.scale       = 100  # ใช้ขนาดจริง ไม่ scale
+    ws_all.sheet_properties.pageSetUpPr.fitToPage = True
+    ws_all.page_margins.left   = 0.30
+    ws_all.page_margins.right  = 0.30
+    ws_all.page_margins.top    = 0.30
+    ws_all.page_margins.bottom = 0.30
+    ws_all.page_margins.header = 0.0
+    ws_all.page_margins.footer = 0.0
     buf = io.BytesIO()
     wb_out.save(buf)
     buf.seek(0)
