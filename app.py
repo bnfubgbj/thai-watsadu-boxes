@@ -81,15 +81,15 @@ def calc_boxes(canvas_pairs, foam_dozen) -> list[dict]:
 # ─── PDF Parser ────────────────────────────────────────────────────────────────
 def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    result = {"po_no": "", "invoice_no": "", "ship_date": "", "po_items": {"canvas": 0, "foam200": 0, "foam212": 0},
+    result = {"so_no": "", "po_no": "", "invoice_no": "", "ship_date": "", "po_items": {"canvas": 0, "foam200": 0, "foam212": 0},
               "branches": {}, "errors": [], "filename": filename}
 
     first_text = doc[0].get_text()
     m_so   = re.search(r'SO\d+-\d+', first_text)
     m_inv  = re.search(r'(?:ใบสสงซซอเลขททส|ใบสั่งซื้อเลขที่)\s+(\d+)', first_text)
     m_ship = re.search(r'Ship Date\s*([\d/]+)', first_text)
-    if m_so:   result["po_no"]      = m_so.group(0)
-    if m_inv:  result["invoice_no"] = m_inv.group(1)
+    if m_so:   result["so_no"]       = m_so.group(0)
+    if m_inv:  result["po_no"]      = m_inv.group(1)
     if m_ship: result["ship_date"]  = m_ship.group(1)
 
     # รูปแบบใหม่ (CRC Thai Watsadu Ltd.) — Ship Date คือบรรทัดวันที่ 2 ติดกัน, PO ถัดไป
@@ -208,7 +208,7 @@ def generate_excel(all_branches: list[dict], company: str, invoice_no: str,
     for i, b in enumerate(all_branches):
         bx_count = len(b["boxes"])
         box_nums = ", ".join(f"{k+1}/{bx_count}" for k in range(bx_count))
-        ws_sum.append([i+1, b.get("po_no",""), b.get("invoice_no",""), b["name"], b["name_th"], str(b["upfront"]),
+        ws_sum.append([i+1, b.get("so_no",""), b.get("po_no",""), b["name"], b["name_th"], str(b["upfront"]),
                        b["canvas"], b["foam200"], b["foam212"],
                        bx_count, box_nums])
 
@@ -356,7 +356,7 @@ if analyze_btn and uploaded:
                 merged_map[key]["foam200"] += b["foam200"]
                 merged_map[key]["foam212"] += b["foam212"]
             else:
-                merged_map[key] = {**b, "upfront": code, "po_no": parsed["po_no"],
+                merged_map[key] = {**b, "upfront": code, "so_no": parsed.get("so_no",""), "po_no": parsed["po_no"],
                                    "invoice_no": parsed.get("invoice_no",""),
                                    "ship_date": parsed.get("ship_date",""),
                                    "srcFiles": [f.name]}
@@ -398,8 +398,8 @@ if branches:
         box_labels = ", ".join(f"{k+1}/{bx_count}" for k in range(bx_count))
         box_types = " | ".join(bx["label"] for bx in b["boxes"])
         rows.append({
-            "SO No.":      b.get("po_no",""),
-            "PO No.":      b.get("invoice_no",""),
+            "SO No.":      b.get("so_no",""),
+            "PO No.":      b.get("po_no",""),
             "สาขา (EN)":  b["name"],
             "สาขา (TH)":  b["name_th"],
             "รหัส":        str(b["upfront"]),
