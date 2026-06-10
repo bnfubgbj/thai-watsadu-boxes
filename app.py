@@ -86,18 +86,25 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
 
     first_text = doc[0].get_text()
     m_so   = re.search(r'SO\d+-\d+', first_text)
-    m_inv  = re.search(r'ใบสสงซซอเลขททส\s+(\d+)', first_text)
-    m_ship = re.search(r'Ship Date\s*([\d/]+)', first_text)
-    if m_so:   result["po_no"]      = m_so.group(0)
-    if m_inv:  result["invoice_no"] = m_inv.group(1)
-    if m_ship: result["ship_date"]  = m_ship.group(1)
+    m_inv  = re.search(r'(?:ใบสสงซซอเลขททส|ใบสั่งซื้อเลขที่)\s+(\d+)', first_text)
+    m_ship = re.search(r'Ship Date[:\s]*(\d{1,2}/\d{1,2}/\d{4})', first_text)
+    # รูปแบบใหม่: P/O Number: 2606008400 00
+    m_po_new = re.search(r'P/O Number[:\s]*(\d+)', first_text)
+    if m_so:     result["po_no"]      = m_so.group(0)
+    elif m_po_new: result["po_no"]    = "SO-" + m_po_new.group(1)
+    if m_inv:    result["invoice_no"] = m_inv.group(1)
+    elif m_po_new: result["invoice_no"] = m_po_new.group(1)
+    if m_ship:   result["ship_date"]  = m_ship.group(1)
+    else:
+        m_ship2 = re.search(r'Ship Date[:\s]*(\w+,\s*\d+\s*\w+\s*\d+)', first_text)
+        if m_ship2: result["ship_date"] = m_ship2.group(1)
 
     po_pages = []
     dist_pages = []
 
     for i in range(len(doc)):
         text = doc[i].get_text()
-        if "ใบแบงสสนคคา" in text or "ใบแบบงสสนคคา" in text or "กระจายไปสาขา" in text:
+        if "ใบแบงสสนคคา" in text or "ใบแบบงสสนคคา" in text or "ใบแบ่งสินค้า" in text or "กระจายไปสาขา" in text or "กระจายไปยังสาขา" in text:
             dist_pages.append(i)
         elif "ใบสสงซซอ" in text or "จสานวนสสง" in text:
             po_pages.append(i)
@@ -135,7 +142,7 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
         while idx < len(lines):
             line = lines[idx].strip()
 
-            bm = re.search(r'กระจายไปสาขา\s+(\d{5})\s+(.*)', line)
+            bm = re.search(r'กระจายไป(?:สาขา|ยังสาขา)\s+(\d{5})\s+(.*)', line)
             if bm:
                 code = int(bm.group(1))
                 name_raw = bm.group(2).strip()
@@ -150,7 +157,8 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
                 idx += 1
                 continue
 
-            if current_branch and ('รองเทคาผคาใบ' in line or 'รองเทคาแตะ' in line):
+            if current_branch and ('รองเทคาผคาใบ' in line or 'รองเทคาแตะ' in line
+                                      or 'รองเท้าผ้าใบ' in line or 'รองเท้าแตะ' in line):
                 product_line = line
                 qty = 0
                 for k in range(idx + 1, min(idx + 10, len(lines))):
@@ -159,11 +167,11 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
                         qty = float(m.group(1))
                         break
                 if qty > 0:
-                    if 'ผคาใบ' in product_line or '205' in product_line:
+                    if 'ผคาใบ' in product_line or 'ผ้าใบ' in product_line or '205' in product_line:
                         result["branches"][current_branch]["canvas"] += qty
                     elif '212' in product_line or ('สวม' in product_line and '200' not in product_line):
                         result["branches"][current_branch]["foam212"] += qty
-                    elif '200' in product_line or 'หหนทบ' in product_line or 'แตะ' in product_line:
+                    elif '200' in product_line or 'หหนทบ' in product_line or 'หูหนีบ' in product_line or 'แตะ' in product_line:
                         result["branches"][current_branch]["foam200"] += qty
 
             idx += 1
