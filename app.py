@@ -87,17 +87,25 @@ def parse_pdf(pdf_bytes: bytes, filename: str) -> dict:
     first_text = doc[0].get_text()
     m_so   = re.search(r'SO\d+-\d+', first_text)
     m_inv  = re.search(r'(?:ใบสสงซซอเลขททส|ใบสั่งซื้อเลขที่)\s+(\d+)', first_text)
-    m_ship = re.search(r'Ship Date[:\s]*(\d{1,2}/\d{1,2}/\d{4})', first_text)
-    # รูปแบบใหม่: P/O Number: 2606008400 00
-    m_po_new = re.search(r'P/O Number[:\s]*(\d+)', first_text)
-    if m_so:     result["po_no"]      = m_so.group(0)
-    elif m_po_new: result["po_no"]    = "SO-" + m_po_new.group(1)
-    if m_inv:    result["invoice_no"] = m_inv.group(1)
-    elif m_po_new: result["invoice_no"] = m_po_new.group(1)
-    if m_ship:   result["ship_date"]  = m_ship.group(1)
-    else:
-        m_ship2 = re.search(r'Ship Date[:\s]*(\w+,\s*\d+\s*\w+\s*\d+)', first_text)
-        if m_ship2: result["ship_date"] = m_ship2.group(1)
+    m_ship = re.search(r'Ship Date\s*([\d/]+)', first_text)
+    if m_so:   result["po_no"]      = m_so.group(0)
+    if m_inv:  result["invoice_no"] = m_inv.group(1)
+    if m_ship: result["ship_date"]  = m_ship.group(1)
+
+    # รูปแบบใหม่ (CRC Thai Watsadu Ltd.) — Ship Date คือบรรทัดวันที่ 2 ติดกัน, PO ถัดไป
+    if not result["po_no"] or not result["ship_date"]:
+        lines_ft = first_text.split('\n')
+        DAY_PAT = r'^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),'
+        for idx_ft, ln in enumerate(lines_ft):
+            if re.match(DAY_PAT, ln.strip()) and idx_ft > 0 and re.match(DAY_PAT, lines_ft[idx_ft-1].strip()):
+                if not result["ship_date"]:
+                    result["ship_date"] = ln.strip()
+                if idx_ft + 1 < len(lines_ft):
+                    next_ln = lines_ft[idx_ft + 1].strip()
+                    m_po = re.match(r'^(\d{10})', next_ln)
+                    if m_po and not result["po_no"]:
+                        result["po_no"] = m_po.group(1)
+                break
 
     po_pages = []
     dist_pages = []
